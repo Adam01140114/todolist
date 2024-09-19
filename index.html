@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>To-Do List</title>
+  <!-- Firebase compat SDK -->
+  <script src="https://www.gstatic.com/firebasejs/9.16.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.16.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.16.0/firebase-auth-compat.js"></script>
+  <!-- Confetti Library -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.5.1/dist/confetti.browser.min.js"></script>
+
+  <style>
+    
+    .sublist-container h3 {
+  text-align: center;
+}
+
+    
+    body {
+      font-family: Arial, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin: 0;
+      padding: 20px;
+      background-color: #e0f7fa;
+    }
+
+    h1, h2 {
+      text-align: center;
+      color: #01579b;
+    }
+
+    .container, .sublist-container {
+      border: 2px solid #0288d1;
+      border-radius: 8px;
+      padding: 20px;
+      width: 320px;
+      margin-bottom: 20px;
+      background-color: white;
+    }
+
+    form {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    #todo-input, .list-input {
+      padding: 10px;
+      margin-bottom: 10px;
+      width: 300px;
+      border: 1px solid #0288d1;
+      border-radius: 4px;
+    }
+
+    button {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 4px;
+      background-color: #0288d1;
+      color: white;
+      cursor: pointer;
+      margin-top: 5px;
+    }
+
+    button:hover {
+      background-color: #0277bd;
+    }
+
+    ul {
+      list-style-type: none;
+      padding: 0;
+      width: 300px;
+    }
+
+    li {
+      background-color: white;
+      padding: 15px;
+      margin-bottom: 10px;
+      margin-left: -6px;
+      border: 1px solid #0288d1;
+      border-radius: 4px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 100%;
+      font-weight: bold;
+    }
+
+    .star {
+      cursor: pointer;
+      font-size: 20px;
+      margin-right: 10px;
+    }
+
+    .action-buttons {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 100%;
+      margin-top: 10px;
+    }
+
+    .item-content {
+      display: flex;
+      align-items: center;
+      flex-grow: 1;
+    }
+
+    .action-buttons button {
+      margin-top: 5px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>To-Do List</h1>
+    <form id="todo-form">
+      <input type="text" id="todo-input" placeholder="Enter a to-do item" required>
+      <button type="submit">Add</button>
+    </form>
+  </div>
+
+  <div class="container">
+    <h2>Your To-Do List</h2>
+    <ul id="todo-list"></ul>
+  </div>
+
+  <!-- Sublist container where all sublists will appear -->
+  <div id="sublist-container"></div>
+
+  <script>
+  // Initialize Firebase with compat version
+  const firebaseConfig = {
+    apiKey: "AIzaSyAgYdoZnSv5ekxngv_ue61aFZUGcRlphok",
+    authDomain: "defundtaps.firebaseapp.com",
+    projectId: "defundtaps",
+    storageBucket: "defundtaps.appspot.com",
+    messagingSenderId: "456064481827",
+    appId: "1:456064481827:web:4a4b37035fbfbd534ccf96",
+    measurementId: "G-4ZX480FN46"
+  };
+
+   // Initialize Firebase
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
+
+  // DOM Elements
+  const todoForm = document.getElementById('todo-form');
+  const todoInput = document.getElementById('todo-input');
+  const todoList = document.getElementById('todo-list');
+  const sublistContainer = document.getElementById('sublist-container');
+
+  // Add a new to-do item with a position value
+  todoForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const todoText = todoInput.value;
+    if (todoText.trim()) {
+      try {
+        // Get the current max position value
+        const querySnapshot = await db.collection('todos').orderBy('position', 'desc').limit(1).get();
+        let newPosition = 1;
+        if (!querySnapshot.empty) {
+          const maxPositionItem = querySnapshot.docs[0].data();
+          newPosition = maxPositionItem.position + 1;
+        }
+
+        // Save the new to-do item to Firestore with a new position
+        await db.collection('todos').add({
+          text: todoText,
+          completed: false,
+          position: newPosition,
+          starred: false, // Add starred flag
+          sublist: null  // Initially, no sublist is attached
+        });
+        
+        todoInput.value = ''; // Clear input
+        displayTodos(); // Refresh list
+      } catch (error) {
+        console.error('Error adding todo:', error);
+      }
+    }
+  });
+
+  // Display the to-do items with "Complete", "Create Sublist" buttons
+  const displayTodos = async () => {
+  todoList.innerHTML = ''; // Clear current list
+  sublistContainer.innerHTML = ''; // Clear sublists
+  try {
+    // Fetch the todos from Firestore and order by position (ascending)
+    const querySnapshot = await db.collection('todos').orderBy('position', 'asc').get();
+    const todosArray = [];
+    
+    querySnapshot.forEach((doc) => {
+      todosArray.push({ id: doc.id, data: doc.data() });
+    });
+
+    // Loop through and display each to-do item
+    todosArray.forEach((todoItem, index) => {
+      const li = document.createElement('li');
+
+      // Item content wrapper
+      const itemContent = document.createElement('div');
+      itemContent.classList.add('item-content');
+
+      // Star icon
+      const starIcon = document.createElement('span');
+      starIcon.classList.add('star');
+      starIcon.innerHTML = todoItem.data.starred ? '★' : '☆'; // Show filled or hollow star
+      starIcon.style.color = todoItem.data.starred ? 'gold' : 'black';
+
+      starIcon.addEventListener('click', async () => {
+        // Toggle star and move to top of list
+        await db.collection('todos').doc(todoItem.id).update({
+          starred: !todoItem.data.starred,
+          position: 0 // Move to the top
+        });
+        displayTodos(); // Refresh list
+      });
+
+      // Item text
+      const itemText = document.createElement('span');
+      itemText.textContent = todoItem.data.text;
+
+      itemContent.appendChild(starIcon); // Add star to the content
+      itemContent.appendChild(itemText); // Add text to the content
+
+      // Action buttons container
+      const actionDiv = document.createElement('div');
+      actionDiv.classList.add('action-buttons');
+
+      // Complete button
+      const completeButton = document.createElement('button');
+      completeButton.textContent = 'Complete';
+      completeButton.addEventListener('click', () => completeTodoItem(todoItem.id, index, todosArray.length, todoItem.data.starred, todoItem.data.sublist));
+
+      // Create/View Sublist button
+      const createSublistButton = document.createElement('button');
+      createSublistButton.textContent = todoItem.data.sublist ? 'View Sublist' : 'Create Sublist'; // Check if sublist exists
+
+      // Create sublist functionality
+      let sublistCreated = !!todoItem.data.sublist; // True if sublist already exists
+      let sublistId = todoItem.data.sublist; // Use the existing sublist ID if available
+
+      createSublistButton.addEventListener('click', async () => {
+        if (!sublistCreated) {
+          // First time creating a sublist
+          const sublistTitle = prompt('Enter sublist name:');
+          if (sublistTitle) {
+            sublistId = `${todoItem.id}-sublist`; // Unique sublist ID
+            await db.collection('sublists').doc(sublistId).set({
+              title: sublistTitle,
+              items: []
+            });
+
+            // Update the todo item with the sublist reference
+            await db.collection('todos').doc(todoItem.id).update({
+              sublist: sublistId
+            });
+
+            createSublistButton.textContent = 'View Sublist'; // Change button to "View Sublist"
+            sublistCreated = true; // Mark sublist as created
+
+            displaySublist(sublistId); // Display the sublist immediately
+          }
+        } else {
+          // If sublist already exists, scroll to it
+          scrollToSublist(sublistId);
+        }
+      });
+
+      // Append buttons in the correct order under the item
+      actionDiv.appendChild(completeButton);
+      actionDiv.appendChild(createSublistButton);
+
+      // Append item content, buttons to the list item
+      li.appendChild(itemContent); // Add star and text
+      li.appendChild(actionDiv); // Add buttons below the item
+      todoList.appendChild(li);
+
+      // Display sublist if exists
+      if (todoItem.data.sublist) {
+        displaySublist(todoItem.data.sublist);
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching todos:', error);
+  }
+};
+
+
+  // Function to delete a to-do item and its sublist, and trigger confetti
+  const completeTodoItem = async (id, index, totalItems, starred, sublistId) => {
+    try {
+      // Remove the sublist associated with the completed item from Firestore and DOM
+      if (sublistId) {
+        // Delete the sublist from Firestore
+        await db.collection('sublists').doc(sublistId).delete();
+
+        // Remove the sublist from the DOM
+        const sublistElement = document.getElementById(sublistId);
+        if (sublistElement) {
+          sublistElement.remove();
+          // Confetti effect on sublist deletion
+          confetti({ particleCount: 500, spread: 360 });
+        }
+      }
+
+      // Delete the to-do item from Firestore
+      await db.collection('todos').doc(id).delete();
+      displayTodos(); // Refresh the list
+
+      // Confetti animation based on task properties
+      if (starred) {
+        confetti({
+          particleCount: 1000,
+          spread: 360,
+          origin: { y: 0.6 }
+        });
+      } else if (totalItems === 1) {
+        confetti({
+          particleCount: 10000,
+          spread: 360,
+          origin: { y: 0.6 }
+        });
+      } else {
+        const particleCount = Math.floor(100 + (900 * (1 - index / totalItems)));
+        confetti({
+          particleCount: particleCount,
+          spread: 70,
+          origin: { y: 0.6 }
+        });
+      }
+    } catch (error) {
+      console.error('Error deleting todo:', error);
+    }
+  };
+
+  // Function to display a sublist
+  const displaySublist = async (sublistId) => {
+  if (document.getElementById(sublistId)) return;
+
+  const sublistDoc = await db.collection('sublists').doc(sublistId).get();
+  const sublistData = sublistDoc.data();
+
+  if (!sublistData) return;
+
+  const sublistDiv = document.createElement('div');
+  sublistDiv.classList.add('sublist-container');
+  sublistDiv.id = sublistId;
+
+  const sublistTitleEl = document.createElement('h3');
+  sublistTitleEl.textContent = sublistData.title;
+  sublistDiv.appendChild(sublistTitleEl);
+
+  const sublistForm = document.createElement('form');
+  sublistForm.innerHTML = `
+    <input type="text" placeholder="Add item" required class="list-input">
+    <button type="submit">Add Item</button>
+    <button type="button" class="delete-list">Delete List</button>
+  `;
+
+  const itemList = document.createElement('ul');
+  
+  // Render sorted sublist items
+  renderSublistItems(sublistData.items, sublistId, itemList);
+
+  // Add new item to sublist
+  sublistForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const itemInput = sublistForm.querySelector('.list-input');
+    const itemText = itemInput.value.trim();
+
+    if (itemText) {
+      const newItem = { text: itemText, starred: false }; // New item with starred flag
+      const li = document.createElement('li');
+      appendSublistItem(li, sublistId, newItem, itemList);
+      itemList.appendChild(li);
+
+      // Save new sublist item to Firestore
+      await db.collection('sublists').doc(sublistId).update({
+        items: firebase.firestore.FieldValue.arrayUnion(newItem)
+      });
+
+      itemInput.value = ''; // Clear input
+    }
+  });
+
+  const deleteListButton = sublistForm.querySelector('.delete-list');
+  deleteListButton.addEventListener('click', async () => {
+    await db.collection('sublists').doc(sublistId).delete();
+    sublistDiv.remove();
+    confetti({ particleCount: 500, spread: 360 });
+  });
+
+  sublistDiv.appendChild(sublistForm);
+  sublistDiv.appendChild(itemList);
+
+  sublistContainer.appendChild(sublistDiv);
+};
+
+const appendSublistItem = (li, sublistId, item, itemList) => {
+  const itemContent = document.createElement('div');
+  itemContent.classList.add('item-content');
+
+  // Star icon
+  const starIcon = document.createElement('span');
+  starIcon.classList.add('star');
+  starIcon.innerHTML = item.starred ? '★' : '☆';
+  starIcon.style.color = item.starred ? 'gold' : 'black';
+
+  starIcon.addEventListener('click', async () => {
+    // Toggle star and update Firestore
+    const updatedItem = { ...item, starred: !item.starred };
+
+    // Update the star in UI immediately
+    starIcon.innerHTML = updatedItem.starred ? '★' : '☆';
+    starIcon.style.color = updatedItem.starred ? 'gold' : 'black';
+
+    // Remove the old item and add the updated one in Firestore
+    await db.collection('sublists').doc(sublistId).update({
+      items: firebase.firestore.FieldValue.arrayRemove(item) // Remove old item
+    });
+
+    await db.collection('sublists').doc(sublistId).update({
+      items: firebase.firestore.FieldValue.arrayUnion(updatedItem) // Add updated item
+    });
+
+    // Sort and re-render the sublist items based on the new starred status
+    const updatedSublist = (await db.collection('sublists').doc(sublistId).get()).data().items;
+    renderSublistItems(updatedSublist, sublistId, itemList); // Re-render sublist
+  });
+
+  const itemText = document.createElement('span');
+  itemText.textContent = item.text;
+
+  itemContent.appendChild(starIcon);
+  itemContent.appendChild(itemText);
+
+  li.appendChild(itemContent);
+
+  // Complete button
+  const completeButton = document.createElement('button');
+  completeButton.textContent = 'Complete';
+  completeButton.style.marginTop = '5px';
+
+  completeButton.addEventListener('click', async () => {
+    li.remove();
+    await db.collection('sublists').doc(sublistId).update({
+      items: firebase.firestore.FieldValue.arrayRemove(item)
+    });
+
+    confetti({
+      particleCount: 200,
+      spread: 100
+    });
+  });
+
+  li.appendChild(completeButton);
+};
+
+
+  // Function to append a complete button to each sublist item
+  const appendCompleteButton = (li, sublistId, itemText) => {
+    const completeButton = document.createElement('button');
+    completeButton.textContent = 'Complete';
+    completeButton.style.marginTop = '5px';
+
+    completeButton.addEventListener('click', async () => {
+      // Remove the item from the sublist
+      li.remove();
+
+      // Remove from Firestore
+      await db.collection('sublists').doc(sublistId).update({
+        items: firebase.firestore.FieldValue.arrayRemove(itemText)
+      });
+
+      // Trigger confetti
+      confetti({
+        particleCount: 200,
+        spread: 100
+      });
+    });
+
+    li.appendChild(completeButton);
+  };
+    
+    
+  const renderSublistItems = (items, sublistId, itemList) => {
+  // Clear the current list items
+  itemList.innerHTML = '';
+
+  // Sort sublist items by starred status, showing starred items first
+  const sortedItems = items.sort((a, b) => b.starred - a.starred);
+
+  // Add sorted sublist items to the UI
+  sortedItems.forEach((item) => {
+    const li = document.createElement('li');
+    appendSublistItem(li, sublistId, item, itemList);
+    itemList.appendChild(li);
+  });
+};
+
+
+  // Scroll to sublist function
+  const scrollToSublist = (sublistId) => {
+    const sublistElement = document.getElementById(sublistId);
+    if (sublistElement) {
+      sublistElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  };
+
+  // Load todos on page load
+  window.addEventListener('load', displayTodos);
+  </script>
+</body>
+</html>
