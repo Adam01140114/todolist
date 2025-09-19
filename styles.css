@@ -556,6 +556,25 @@ body {
 .todo-item.dragging {
     opacity: 0.5;
     transform: rotate(5deg);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+    z-index: 1000;
+}
+
+.todo-item.drag-over {
+    border-top: 3px solid #667eea;
+    background-color: #f0f4ff;
+}
+
+.todo-edit-input {
+    flex: 1;
+    border: 2px solid #667eea;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 1rem;
+    font-family: inherit;
+    outline: none;
+    background: white;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
 }
 
 .todo-content {
@@ -605,6 +624,13 @@ body {
     color: #333;
     word-wrap: break-word;
     transition: all 0.3s ease;
+    cursor: pointer;
+    padding: 2px 4px;
+    border-radius: 4px;
+}
+
+.todo-text:hover {
+    background-color: #f8f9fa;
 }
 
 .todo-item.completed .todo-text {

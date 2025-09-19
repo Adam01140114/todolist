@@ -440,6 +440,65 @@
                 await update(todoRef, { order: newOrder });
             }
 
+            startEditTodo(todoId) {
+                const todoElement = document.querySelector(`[data-todo-id="${todoId}"]`);
+                if (!todoElement) return;
+
+                const textElement = todoElement.querySelector('.todo-text');
+                if (!textElement) return;
+
+                const currentText = textElement.textContent;
+                
+                // Create input element
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.value = currentText;
+                input.className = 'todo-edit-input';
+                input.maxLength = 100;
+                
+                // Replace text with input
+                textElement.style.display = 'none';
+                textElement.parentNode.insertBefore(input, textElement);
+                
+                // Focus and select text
+                input.focus();
+                input.select();
+                
+                // Handle save on Enter or blur
+                const saveEdit = async () => {
+                    const newText = input.value.trim();
+                    if (newText && newText !== currentText) {
+                        await this.updateTodoText(todoId, newText);
+                    }
+                    // Restore text element
+                    textElement.textContent = newText || currentText;
+                    textElement.style.display = '';
+                    input.remove();
+                };
+                
+                const cancelEdit = () => {
+                    textElement.style.display = '';
+                    input.remove();
+                };
+                
+                input.addEventListener('blur', saveEdit);
+                input.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        saveEdit();
+                    } else if (e.key === 'Escape') {
+                        e.preventDefault();
+                        cancelEdit();
+                    }
+                });
+            }
+
+            async updateTodoText(todoId, newText) {
+                if (!this.todosRef) return;
+                const todoRef = ref(database, `users/${this.user.uid}/todos/${todoId}`);
+                await update(todoRef, { text: newText });
+            }
+
             renderTodos() {
                 const importantTodos = this.todos
                     .filter(todo => todo.important && !todo.completed)
@@ -499,7 +558,7 @@
                                 onclick="app.toggleCompleted('${todo.id}')">
                             <i class="fas fa-check"></i>
                         </button>
-                        <span class="todo-text">${this.escapeHtml(todo.text)}</span>
+                        <span class="todo-text" ondblclick="app.startEditTodo('${todo.id}')" title="Double-click to edit">${this.escapeHtml(todo.text)}</span>
                         <div class="todo-actions">
                             <button class="sublist-btn ${hasSubtasks ? 'has-sublist' : ''}" 
                                     onclick="app.toggleSublist('${todo.id}')" 
@@ -543,20 +602,54 @@
 
             makeSortable(container, isImportant) {
                 let draggedElement = null;
+                let dragOverElement = null;
 
                 container.addEventListener('dragstart', (e) => {
+                    // Only allow dragging of todo items, not buttons or other elements
+                    if (!e.target.classList.contains('todo-item')) {
+                        e.preventDefault();
+                        return;
+                    }
+                    
                     draggedElement = e.target;
+                    e.target.classList.add('dragging');
                     e.target.style.opacity = '0.5';
+                    
+                    // Set drag effect
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/html', e.target.outerHTML);
                 });
 
                 container.addEventListener('dragend', (e) => {
+                    e.target.classList.remove('dragging');
                     e.target.style.opacity = '1';
                     draggedElement = null;
+                    
+                    // Remove any drag over indicators
+                    container.querySelectorAll('.drag-over').forEach(el => {
+                        el.classList.remove('drag-over');
+                    });
                 });
 
                 container.addEventListener('dragover', (e) => {
                     e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                    
+                    if (!draggedElement) return;
+                    
                     const afterElement = this.getDragAfterElement(container, e.clientY);
+                    
+                    // Remove previous drag over indicators
+                    container.querySelectorAll('.drag-over').forEach(el => {
+                        el.classList.remove('drag-over');
+                    });
+                    
+                    // Add drag over indicator to the element we're hovering over
+                    if (afterElement) {
+                        afterElement.classList.add('drag-over');
+                    }
+                    
+                    // Move the dragged element
                     if (afterElement == null) {
                         container.appendChild(draggedElement);
                     } else {
@@ -564,9 +657,27 @@
                     }
                 });
 
+                container.addEventListener('dragenter', (e) => {
+                    e.preventDefault();
+                    if (e.target.classList.contains('todo-item') && e.target !== draggedElement) {
+                        e.target.classList.add('drag-over');
+                    }
+                });
+
+                container.addEventListener('dragleave', (e) => {
+                    if (e.target.classList.contains('todo-item')) {
+                        e.target.classList.remove('drag-over');
+                    }
+                });
+
                 container.addEventListener('drop', async (e) => {
                     e.preventDefault();
                     if (!draggedElement) return;
+
+                    // Remove all drag over indicators
+                    container.querySelectorAll('.drag-over').forEach(el => {
+                        el.classList.remove('drag-over');
+                    });
 
                     const todos = Array.from(container.children);
                     const newIndex = todos.indexOf(draggedElement);
