@@ -9,11 +9,46 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
 <body>
-    <div class="app-container">
+    <!-- Authentication Modal -->
+    <div id="authModal" class="auth-modal">
+        <div class="auth-container">
+            <div class="auth-header">
+                <h2><i class="fas fa-tasks"></i> Todo List</h2>
+                <p>Sign in to access your personal todo list</p>
+            </div>
+            
+            <div class="auth-tabs">
+                <button class="auth-tab active" id="loginTab">Sign In</button>
+                <button class="auth-tab" id="signupTab">Sign Up</button>
+            </div>
+
+            <form id="authForm" class="auth-form">
+                <div class="form-group">
+                    <input type="email" id="email" placeholder="Email address" required>
+                </div>
+                <div class="form-group">
+                    <input type="password" id="password" placeholder="Password" required>
+                </div>
+                <button type="submit" class="auth-btn" id="authSubmitBtn">
+                    <span id="authBtnText">Sign In</span>
+                    <div class="auth-spinner" id="authSpinner" style="display: none;"></div>
+                </button>
+            </form>
+
+            <div class="auth-error" id="authError" style="display: none;"></div>
+        </div>
+    </div>
+
+    <div class="app-container" id="appContainer" style="display: none;">
         <header class="app-header">
             <h1><i class="fas fa-tasks"></i> My Todo List</h1>
-            <div class="stats">
-                <span class="total-todos">0</span> tasks
+            <div class="header-actions">
+                <div class="stats">
+                    <span class="total-todos">0</span> tasks
+                </div>
+                <button class="logout-btn" onclick="app.signOut()" title="Sign Out">
+                    <i class="fas fa-sign-out-alt"></i>
+                </button>
             </div>
         </header>
 
@@ -64,6 +99,7 @@
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
         import { getDatabase, ref, push, onValue, remove, update } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
+        import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
 
         const firebaseConfig = {
             apiKey: "AIzaSyCZUp1CSYlsVgzhttkziCLWEnReTw8dm68",
@@ -79,14 +115,16 @@
         // Initialize Firebase
         const app = initializeApp(firebaseConfig);
         const database = getDatabase(app);
-        const todosRef = ref(database, 'todos');
+        const auth = getAuth(app);
 
         class TodoApp {
             constructor() {
                 this.todos = [];
+                this.user = null;
+                this.todosRef = null;
                 this.initializeElements();
                 this.setupEventListeners();
-                this.loadTodos();
+                this.setupAuth();
             }
 
             initializeElements() {
@@ -99,6 +137,19 @@
                 this.totalTodos = document.querySelector('.total-todos');
                 this.importantCount = document.getElementById('importantCount');
                 this.allCount = document.getElementById('allCount');
+                
+                // Auth elements
+                this.authModal = document.getElementById('authModal');
+                this.appContainer = document.getElementById('appContainer');
+                this.authForm = document.getElementById('authForm');
+                this.emailInput = document.getElementById('email');
+                this.passwordInput = document.getElementById('password');
+                this.authSubmitBtn = document.getElementById('authSubmitBtn');
+                this.authBtnText = document.getElementById('authBtnText');
+                this.authSpinner = document.getElementById('authSpinner');
+                this.authError = document.getElementById('authError');
+                this.loginTab = document.getElementById('loginTab');
+                this.signupTab = document.getElementById('signupTab');
             }
 
             setupEventListeners() {
@@ -106,12 +157,122 @@
                 this.todoInput.addEventListener('keypress', (e) => {
                     if (e.key === 'Enter') this.addTodo();
                 });
+
+                // Add event delegation for sublist inputs
+                document.addEventListener('keypress', (e) => {
+                    if (e.target.id && e.target.id.startsWith('subtaskInput-') && e.key === 'Enter') {
+                        const todoId = e.target.id.replace('subtaskInput-', '');
+                        this.addSubtask(todoId);
+                    }
+                });
+
+                // Auth event listeners
+                this.authForm.addEventListener('submit', (e) => this.handleAuth(e));
+                this.loginTab.addEventListener('click', () => this.switchAuthMode('login'));
+                this.signupTab.addEventListener('click', () => this.switchAuthMode('signup'));
+            }
+
+            setupAuth() {
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        this.user = user;
+                        this.todosRef = ref(database, `users/${user.uid}/todos`);
+                        this.showApp();
+                        this.loadTodos();
+                    } else {
+                        this.user = null;
+                        this.todosRef = null;
+                        this.showAuth();
+                    }
+                });
+            }
+
+            showAuth() {
+                this.authModal.style.display = 'flex';
+                this.appContainer.style.display = 'none';
+            }
+
+            showApp() {
+                this.authModal.style.display = 'none';
+                this.appContainer.style.display = 'block';
+            }
+
+            switchAuthMode(mode) {
+                const isLogin = mode === 'login';
+                this.loginTab.classList.toggle('active', isLogin);
+                this.signupTab.classList.toggle('active', !isLogin);
+                this.authBtnText.textContent = isLogin ? 'Sign In' : 'Sign Up';
+                this.authError.style.display = 'none';
+            }
+
+            async handleAuth(e) {
+                e.preventDefault();
+                const email = this.emailInput.value.trim();
+                const password = this.passwordInput.value;
+                const isLogin = this.loginTab.classList.contains('active');
+
+                this.showAuthLoading(true);
+                this.hideError();
+
+                try {
+                    if (isLogin) {
+                        await signInWithEmailAndPassword(auth, email, password);
+                    } else {
+                        await createUserWithEmailAndPassword(auth, email, password);
+                    }
+                } catch (error) {
+                    this.showError(this.getAuthErrorMessage(error.code));
+                } finally {
+                    this.showAuthLoading(false);
+                }
+            }
+
+            async signOut() {
+                try {
+                    await signOut(auth);
+                } catch (error) {
+                    console.error('Error signing out:', error);
+                }
+            }
+
+            showAuthLoading(show) {
+                this.authSubmitBtn.disabled = show;
+                this.authBtnText.style.display = show ? 'none' : 'block';
+                this.authSpinner.style.display = show ? 'block' : 'none';
+            }
+
+            showError(message) {
+                this.authError.textContent = message;
+                this.authError.style.display = 'block';
+            }
+
+            hideError() {
+                this.authError.style.display = 'none';
+            }
+
+            getAuthErrorMessage(errorCode) {
+                switch (errorCode) {
+                    case 'auth/user-not-found':
+                        return 'No account found with this email address.';
+                    case 'auth/wrong-password':
+                        return 'Incorrect password.';
+                    case 'auth/email-already-in-use':
+                        return 'An account with this email already exists.';
+                    case 'auth/weak-password':
+                        return 'Password should be at least 6 characters.';
+                    case 'auth/invalid-email':
+                        return 'Invalid email address.';
+                    default:
+                        return 'Authentication failed. Please try again.';
+                }
             }
 
             async loadTodos() {
+                if (!this.todosRef) return;
+                
                 this.showLoading(true);
                 try {
-                    onValue(todosRef, (snapshot) => {
+                    onValue(this.todosRef, (snapshot) => {
                         this.todos = [];
                         if (snapshot.exists()) {
                             const data = snapshot.val();
@@ -131,7 +292,7 @@
 
             async addTodo() {
                 const text = this.todoInput.value.trim();
-                if (!text) return;
+                if (!text || !this.todosRef) return;
 
                 const todo = {
                     text: text,
@@ -142,7 +303,7 @@
                 };
 
                 try {
-                    await push(todosRef, todo);
+                    await push(this.todosRef, todo);
                     this.todoInput.value = '';
                 } catch (error) {
                     console.error('Error adding todo:', error);
@@ -151,27 +312,131 @@
 
             async toggleImportant(todoId) {
                 const todo = this.todos.find(t => t.id === todoId);
-                if (!todo) return;
+                if (!todo || !this.todosRef) return;
 
-                const todoRef = ref(database, `todos/${todoId}`);
+                const todoRef = ref(database, `users/${this.user.uid}/todos/${todoId}`);
                 await update(todoRef, { important: !todo.important });
             }
 
             async toggleCompleted(todoId) {
                 const todo = this.todos.find(t => t.id === todoId);
-                if (!todo) return;
+                if (!todo || !this.todosRef) return;
 
-                const todoRef = ref(database, `todos/${todoId}`);
+                const todoRef = ref(database, `users/${this.user.uid}/todos/${todoId}`);
                 await update(todoRef, { completed: !todo.completed });
             }
 
             async deleteTodo(todoId) {
-                const todoRef = ref(database, `todos/${todoId}`);
+                if (!this.todosRef) return;
+                const todoRef = ref(database, `users/${this.user.uid}/todos/${todoId}`);
                 await remove(todoRef);
             }
 
+            toggleSublist(todoId) {
+                const sublistContainer = document.getElementById(`sublist-${todoId}`);
+                const sublistBtn = document.querySelector(`[onclick="app.toggleSublist('${todoId}')"]`);
+                
+                if (sublistContainer.style.display === 'none') {
+                    sublistContainer.style.display = 'block';
+                    sublistBtn.classList.add('active');
+                    
+                    // Re-render subtasks when opening sublist
+                    const todo = this.todos.find(t => t.id === todoId);
+                    if (todo && todo.subtasks) {
+                        this.renderSubtasks(todoId, todo.subtasks);
+                    }
+                } else {
+                    sublistContainer.style.display = 'none';
+                    sublistBtn.classList.remove('active');
+                }
+            }
+
+            async addSubtask(todoId) {
+                const input = document.getElementById(`subtaskInput-${todoId}`);
+                const text = input.value.trim();
+                if (!text || !this.todosRef) return;
+
+                const todo = this.todos.find(t => t.id === todoId);
+                if (!todo) return;
+
+                const subtasks = todo.subtasks || [];
+                const newSubtask = {
+                    id: Date.now().toString(),
+                    text: text,
+                    completed: false,
+                    createdAt: Date.now()
+                };
+
+                subtasks.push(newSubtask);
+
+                const todoRef = ref(database, `users/${this.user.uid}/todos/${todoId}`);
+                await update(todoRef, { subtasks: subtasks });
+
+                input.value = '';
+                
+                // Re-render subtasks immediately
+                this.renderSubtasks(todoId, subtasks);
+            }
+
+            async toggleSubtask(todoId, subtaskId) {
+                const todo = this.todos.find(t => t.id === todoId);
+                if (!todo || !this.todosRef) return;
+
+                const subtasks = todo.subtasks || [];
+                const subtask = subtasks.find(s => s.id === subtaskId);
+                if (!subtask) return;
+
+                subtask.completed = !subtask.completed;
+
+                const todoRef = ref(database, `users/${this.user.uid}/todos/${todoId}`);
+                await update(todoRef, { subtasks: subtasks });
+                
+                // Re-render subtasks immediately
+                this.renderSubtasks(todoId, subtasks);
+            }
+
+            async deleteSubtask(todoId, subtaskId) {
+                const todo = this.todos.find(t => t.id === todoId);
+                if (!todo || !this.todosRef) return;
+
+                const subtasks = todo.subtasks || [];
+                const filteredSubtasks = subtasks.filter(s => s.id !== subtaskId);
+
+                const todoRef = ref(database, `users/${this.user.uid}/todos/${todoId}`);
+                await update(todoRef, { subtasks: filteredSubtasks });
+                
+                // Re-render subtasks immediately
+                this.renderSubtasks(todoId, filteredSubtasks);
+            }
+
+            renderSubtasks(todoId, subtasks) {
+                const container = document.getElementById(`sublistItems-${todoId}`);
+                if (!container) return;
+
+                container.innerHTML = '';
+
+                subtasks.forEach(subtask => {
+                    const subtaskElement = document.createElement('div');
+                    subtaskElement.className = `subtask-item ${subtask.completed ? 'completed' : ''}`;
+                    
+                    subtaskElement.innerHTML = `
+                        <button class="subtask-complete-btn ${subtask.completed ? 'completed' : ''}" 
+                                onclick="app.toggleSubtask('${todoId}', '${subtask.id}')">
+                            <i class="fas fa-check"></i>
+                        </button>
+                        <span class="subtask-text">${this.escapeHtml(subtask.text)}</span>
+                        <button class="subtask-delete-btn" onclick="app.deleteSubtask('${todoId}', '${subtask.id}')" title="Delete step">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    `;
+
+                    container.appendChild(subtaskElement);
+                });
+            }
+
             async updateOrder(todoId, newOrder) {
-                const todoRef = ref(database, `todos/${todoId}`);
+                if (!this.todosRef) return;
+                const todoRef = ref(database, `users/${this.user.uid}/todos/${todoId}`);
                 await update(todoRef, { order: newOrder });
             }
 
@@ -183,6 +448,22 @@
                 const regularTodos = this.todos
                     .filter(todo => !todo.important && !todo.completed)
                     .sort((a, b) => (a.order || 0) - (b.order || 0));
+
+                // Show/hide Important Tasks section based on whether there are important todos
+                const importantSection = document.querySelector('.todos-section:first-of-type');
+                if (importantTodos.length === 0) {
+                    importantSection.style.display = 'none';
+                } else {
+                    importantSection.style.display = 'block';
+                }
+
+                // Show/hide All Tasks section based on whether there are any todos
+                const allTasksSection = document.querySelector('.todos-section:last-of-type');
+                if (this.todos.length === 0) {
+                    allTasksSection.style.display = 'none';
+                } else {
+                    allTasksSection.style.display = 'block';
+                }
 
                 this.renderTodoList(importantTodos, this.importantTodos, true);
                 this.renderTodoList(regularTodos, this.allTodos, false);
@@ -208,6 +489,10 @@
                 todoDiv.draggable = true;
                 todoDiv.dataset.todoId = todo.id;
 
+                const subtasks = todo.subtasks || [];
+                const completedSubtasks = subtasks.filter(subtask => subtask.completed).length;
+                const hasSubtasks = subtasks.length > 0;
+
                 todoDiv.innerHTML = `
                     <div class="todo-content">
                         <button class="complete-btn ${todo.completed ? 'completed' : ''}" 
@@ -216,6 +501,12 @@
                         </button>
                         <span class="todo-text">${this.escapeHtml(todo.text)}</span>
                         <div class="todo-actions">
+                            <button class="sublist-btn ${hasSubtasks ? 'has-sublist' : ''}" 
+                                    onclick="app.toggleSublist('${todo.id}')" 
+                                    title="${hasSubtasks ? 'View sublist' : 'Create sublist'}">
+                                <i class="fas fa-list"></i>
+                                ${hasSubtasks ? `<span class="sublist-count">${completedSubtasks}/${subtasks.length}</span>` : ''}
+                            </button>
                             <button class="important-btn ${todo.important ? 'important' : ''}" 
                                     onclick="app.toggleImportant('${todo.id}')" 
                                     title="${todo.important ? 'Remove from important' : 'Mark as important'}">
@@ -226,7 +517,26 @@
                             </button>
                         </div>
                     </div>
+                    <div class="sublist-container" id="sublist-${todo.id}" style="display: none;">
+                        <div class="sublist-header">
+                            <h4>Steps to complete this task:</h4>
+                        </div>
+                        <div class="sublist-input">
+                            <input type="text" id="subtaskInput-${todo.id}" placeholder="Add a step..." maxlength="80">
+                            <button onclick="app.addSubtask('${todo.id}')" class="add-subtask-btn">
+                                <i class="fas fa-plus"></i>
+                            </button>
+                        </div>
+                        <div class="sublist-items" id="sublistItems-${todo.id}">
+                            <!-- Subtasks will be added here -->
+                        </div>
+                    </div>
                 `;
+
+                // Render existing subtasks
+                if (hasSubtasks) {
+                    this.renderSubtasks(todo.id, subtasks);
+                }
 
                 return todoDiv;
             }

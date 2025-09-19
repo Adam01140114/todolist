@@ -13,6 +13,184 @@ body {
     line-height: 1.6;
 }
 
+/* Authentication Modal */
+.auth-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 20px;
+}
+
+.auth-container {
+    background: white;
+    border-radius: 20px;
+    padding: 40px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    width: 100%;
+    max-width: 400px;
+    animation: slideUp 0.5s ease-out;
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateY(30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.auth-header {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.auth-header h2 {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #333;
+    margin-bottom: 10px;
+}
+
+.auth-header h2 i {
+    margin-right: 10px;
+    color: #667eea;
+}
+
+.auth-header p {
+    color: #666;
+    font-size: 1rem;
+}
+
+.auth-tabs {
+    display: flex;
+    margin-bottom: 30px;
+    background: #f8f9fa;
+    border-radius: 10px;
+    padding: 4px;
+}
+
+.auth-tab {
+    flex: 1;
+    padding: 12px;
+    border: none;
+    background: transparent;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 1rem;
+    font-weight: 500;
+    color: #666;
+    transition: all 0.3s ease;
+}
+
+.auth-tab.active {
+    background: white;
+    color: #667eea;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.auth-form {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+}
+
+.form-group input {
+    padding: 15px;
+    border: 2px solid #e9ecef;
+    border-radius: 10px;
+    font-size: 1rem;
+    transition: all 0.3s ease;
+    outline: none;
+}
+
+.form-group input:focus {
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.auth-btn {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    padding: 15px;
+    border-radius: 10px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    position: relative;
+    min-height: 50px;
+}
+
+.auth-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
+}
+
+.auth-btn:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.auth-spinner {
+    width: 20px;
+    height: 20px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-top: 2px solid white;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin: 0 auto;
+}
+
+.auth-error {
+    background: #f8d7da;
+    color: #721c24;
+    padding: 12px;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    text-align: center;
+    border: 1px solid #f5c6cb;
+}
+
+/* Header actions */
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+
+.logout-btn {
+    background: rgba(255, 255, 255, 0.2);
+    border: none;
+    color: white;
+    padding: 10px 15px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 1rem;
+    transition: all 0.3s ease;
+}
+
+.logout-btn:hover {
+    background: rgba(255, 255, 255, 0.3);
+    transform: translateY(-1px);
+}
+
 .app-container {
     max-width: 600px;
     margin: 0 auto;
@@ -146,6 +324,217 @@ body {
     flex-direction: column;
     gap: 10px;
     min-height: 50px;
+}
+
+/* Sublist button */
+.sublist-btn {
+    width: 36px;
+    height: 36px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+    font-size: 0.9rem;
+    background: #f8f9fa;
+    color: #6c757d;
+    position: relative;
+}
+
+.sublist-btn:hover {
+    background: #e9ecef;
+    color: #495057;
+}
+
+.sublist-btn.has-sublist {
+    background: #d1ecf1;
+    color: #0c5460;
+}
+
+.sublist-btn.active {
+    background: #667eea;
+    color: white;
+}
+
+.sublist-count {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    background: #667eea;
+    color: white;
+    border-radius: 10px;
+    padding: 2px 6px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    min-width: 20px;
+    text-align: center;
+}
+
+/* Sublist container */
+.sublist-container {
+    margin-top: 15px;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 10px;
+    border-left: 4px solid #667eea;
+    animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        max-height: 0;
+        padding-top: 0;
+        padding-bottom: 0;
+    }
+    to {
+        opacity: 1;
+        max-height: 500px;
+        padding-top: 15px;
+        padding-bottom: 15px;
+    }
+}
+
+.sublist-header h4 {
+    margin: 0 0 15px 0;
+    color: #495057;
+    font-size: 0.95rem;
+    font-weight: 600;
+}
+
+.sublist-input {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 15px;
+}
+
+.sublist-input input {
+    flex: 1;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 0.9rem;
+    outline: none;
+    transition: border-color 0.3s ease;
+}
+
+.sublist-input input:focus {
+    border-color: #667eea;
+    box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
+}
+
+.add-subtask-btn {
+    background: #667eea;
+    border: none;
+    color: white;
+    padding: 8px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: all 0.3s ease;
+    min-width: 40px;
+}
+
+.add-subtask-btn:hover {
+    background: #5a6fd8;
+    transform: translateY(-1px);
+}
+
+/* Subtask items */
+.sublist-items {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.subtask-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    transition: all 0.3s ease;
+}
+
+.subtask-item:hover {
+    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+}
+
+.subtask-item.completed {
+    opacity: 0.7;
+}
+
+.subtask-complete-btn {
+    width: 20px;
+    height: 20px;
+    border: 2px solid #ddd;
+    border-radius: 50%;
+    background: transparent;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+    flex-shrink: 0;
+}
+
+.subtask-complete-btn:hover {
+    border-color: #4CAF50;
+    background: #f0f8f0;
+}
+
+.subtask-complete-btn.completed {
+    background: #4CAF50;
+    border-color: #4CAF50;
+    color: white;
+}
+
+.subtask-complete-btn i {
+    font-size: 0.7rem;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.subtask-complete-btn.completed i {
+    opacity: 1;
+}
+
+.subtask-text {
+    flex: 1;
+    font-size: 0.9rem;
+    color: #495057;
+    word-wrap: break-word;
+    transition: all 0.3s ease;
+}
+
+.subtask-item.completed .subtask-text {
+    text-decoration: line-through;
+    color: #6c757d;
+}
+
+.subtask-delete-btn {
+    width: 24px;
+    height: 24px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+    font-size: 0.8rem;
+    background: #f8f9fa;
+    color: #dc3545;
+    flex-shrink: 0;
+}
+
+.subtask-delete-btn:hover {
+    background: #f8d7da;
+    color: #721c24;
 }
 
 .todo-item {
@@ -340,6 +729,12 @@ body {
         font-size: 2rem;
     }
     
+    .header-actions {
+        flex-direction: column;
+        gap: 10px;
+        align-items: center;
+    }
+    
     .input-container {
         flex-direction: column;
         gap: 0;
@@ -365,10 +760,38 @@ body {
         gap: 5px;
     }
     
-    .important-btn, .delete-btn {
+    .important-btn, .delete-btn, .sublist-btn {
         width: 32px;
         height: 32px;
         font-size: 0.8rem;
+    }
+    
+    .sublist-container {
+        padding: 12px;
+    }
+    
+    .sublist-input {
+        flex-direction: column;
+        gap: 8px;
+    }
+    
+    .sublist-input input {
+        width: 100%;
+    }
+    
+    .add-subtask-btn {
+        width: 100%;
+        justify-content: center;
+    }
+    
+    /* Auth modal mobile */
+    .auth-container {
+        padding: 30px 20px;
+        margin: 10px;
+    }
+    
+    .auth-header h2 {
+        font-size: 1.8rem;
     }
 }
 
