@@ -23,6 +23,43 @@ A beautiful, mobile-friendly todo list application with Firebase integration, dr
 
 The app is already configured with the provided Firebase configuration. Your data will be automatically saved to the Firebase Realtime Database.
 
+### Firebase Security Rules
+
+**IMPORTANT:** If you see a "Permission denied" error after signing in, you need to update your Firebase Realtime Database security rules.
+
+1. Go to the [Firebase Console](https://console.firebase.google.com/)
+2. Select your project (`todolis-a32fe`)
+3. Navigate to **Realtime Database** → **Rules** tab
+4. Replace the existing rules with the following:
+
+```json
+{
+  "rules": {
+    "users": {
+      "$uid": {
+        "todos": {
+          ".read": "$uid === auth.uid",
+          ".write": "$uid === auth.uid"
+        }
+      }
+    }
+  }
+}
+```
+
+5. Click **Publish** to save the rules
+
+Alternatively, you can use the `database.rules.json` file included in this project and deploy it using the Firebase CLI:
+
+```bash
+firebase deploy --only database
+```
+
+These rules ensure that:
+- Users can only read/write their own todos (under `users/{their-uid}/todos`)
+- Unauthenticated users cannot access any data
+- Each user's data is isolated and secure
+
 ## Mobile Usage
 
 The app is fully responsive and works great on mobile devices:

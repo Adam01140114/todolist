@@ -52,6 +52,8 @@
             </div>
         </header>
 
+        <div class="app-error" id="appError" style="display: none;"></div>
+
         <div class="add-todo-section">
             <div class="input-container">
                 <input type="text" id="todoInput" placeholder="Add a new task..." maxlength="100">
@@ -85,8 +87,7 @@
 
         <div class="empty-state" id="emptyState">
             <i class="fas fa-clipboard-list"></i>
-            <h3>No tasks yet</h3>
-            <p>Add your first task above to get started!</p>
+            <h3>YOU CURRENTLY HAVE NO TASKS</h3>
         </div>
     </div>
 
@@ -98,7 +99,7 @@
     <!-- Firebase SDK -->
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-        import { getDatabase, ref, push, onValue, remove, update } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
+        import { getDatabase, ref, push, onValue, remove, update, get } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
         import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
 
         const firebaseConfig = {
@@ -137,6 +138,8 @@
                 this.totalTodos = document.querySelector('.total-todos');
                 this.importantCount = document.getElementById('importantCount');
                 this.allCount = document.getElementById('allCount');
+                this.appError = document.getElementById('appError');
+                this.todosContainer = document.querySelector('.todos-container');
                 
                 // Auth elements
                 this.authModal = document.getElementById('authModal');
@@ -271,7 +274,29 @@
                 if (!this.todosRef) return;
                 
                 this.showLoading(true);
+                
+                // Set up a timeout to ensure loading doesn't stay forever
+                const loadingTimeout = setTimeout(() => {
+                    console.warn('Loading todos took too long, hiding spinner');
+                    this.showLoading(false);
+                }, 10000); // 10 second timeout
+                
                 try {
+                    // First, get the initial data
+                    const snapshot = await get(this.todosRef);
+                    this.todos = [];
+                    if (snapshot.exists()) {
+                        const data = snapshot.val();
+                        Object.keys(data).forEach(key => {
+                            this.todos.push({ id: key, ...data[key] });
+                        });
+                    }
+                    this.renderTodos();
+                    this.updateStats();
+                    this.showLoading(false);
+                    clearTimeout(loadingTimeout);
+                    
+                    // Then set up real-time listener for updates
                     onValue(this.todosRef, (snapshot) => {
                         this.todos = [];
                         if (snapshot.exists()) {
@@ -282,11 +307,20 @@
                         }
                         this.renderTodos();
                         this.updateStats();
-                        this.showLoading(false);
+                    }, (error) => {
+                        console.error('Error in real-time listener:', error);
                     });
                 } catch (error) {
                     console.error('Error loading todos:', error);
                     this.showLoading(false);
+                    clearTimeout(loadingTimeout);
+                    
+                    // Show user-friendly error message
+                    if (error.code === 'PERMISSION_DENIED' || error.message?.includes('Permission denied')) {
+                        this.showAppError('Database permission denied. Please update your Firebase security rules. See database.rules.json file for the correct rules.');
+                    } else {
+                        this.showAppError('Failed to load todos. Please try refreshing the page.');
+                    }
                 }
             }
 
@@ -386,7 +420,13 @@
                 const subtask = subtasks.find(s => s.id === subtaskId);
                 if (!subtask) return;
 
+                // Don't allow toggling completion for crossed-out subtasks
+                if (subtask.crossedOut) return;
+
                 subtask.completed = !subtask.completed;
+
+                // Update local state immediately
+                todo.subtasks = subtasks;
 
                 const todoRef = ref(database, `users/${this.user.uid}/todos/${todoId}`);
                 await update(todoRef, { subtasks: subtasks });
@@ -400,13 +440,32 @@
                 if (!todo || !this.todosRef) return;
 
                 const subtasks = todo.subtasks || [];
-                const filteredSubtasks = subtasks.filter(s => s.id !== subtaskId);
+                const subtask = subtasks.find(s => s.id === subtaskId);
+                if (!subtask) return;
 
-                const todoRef = ref(database, `users/${this.user.uid}/todos/${todoId}`);
-                await update(todoRef, { subtasks: filteredSubtasks });
-                
-                // Re-render subtasks immediately
-                this.renderSubtasks(todoId, filteredSubtasks);
+                // If already crossed out, delete it permanently
+                if (subtask.crossedOut) {
+                    const filteredSubtasks = subtasks.filter(s => s.id !== subtaskId);
+                    const todoRef = ref(database, `users/${this.user.uid}/todos/${todoId}`);
+                    await update(todoRef, { subtasks: filteredSubtasks });
+                    
+                    // Update local state immediately
+                    todo.subtasks = filteredSubtasks;
+                    
+                    // Re-render subtasks immediately
+                    this.renderSubtasks(todoId, filteredSubtasks);
+                } else {
+                    // First click: mark as crossed out
+                    subtask.crossedOut = true;
+                    const todoRef = ref(database, `users/${this.user.uid}/todos/${todoId}`);
+                    await update(todoRef, { subtasks: subtasks });
+                    
+                    // Update local state immediately
+                    todo.subtasks = subtasks;
+                    
+                    // Re-render subtasks immediately
+                    this.renderSubtasks(todoId, subtasks);
+                }
             }
 
             renderSubtasks(todoId, subtasks) {
@@ -417,15 +476,19 @@
 
                 subtasks.forEach(subtask => {
                     const subtaskElement = document.createElement('div');
-                    subtaskElement.className = `subtask-item ${subtask.completed ? 'completed' : ''}`;
+                    const isCrossedOut = subtask.crossedOut || false;
+                    subtaskElement.className = `subtask-item ${subtask.completed ? 'completed' : ''} ${isCrossedOut ? 'crossed-out' : ''}`;
+                    
+                    const deleteTitle = isCrossedOut ? 'Delete permanently' : 'Cross out';
                     
                     subtaskElement.innerHTML = `
                         <button class="subtask-complete-btn ${subtask.completed ? 'completed' : ''}" 
-                                onclick="app.toggleSubtask('${todoId}', '${subtask.id}')">
+                                onclick="app.toggleSubtask('${todoId}', '${subtask.id}')"
+                                ${isCrossedOut ? 'disabled style="opacity: 0.3; cursor: not-allowed;"' : ''}>
                             <i class="fas fa-check"></i>
                         </button>
                         <span class="subtask-text">${this.escapeHtml(subtask.text)}</span>
-                        <button class="subtask-delete-btn" onclick="app.deleteSubtask('${todoId}', '${subtask.id}')" title="Delete step">
+                        <button class="subtask-delete-btn" onclick="event.stopPropagation(); app.deleteSubtask('${todoId}', '${subtask.id}')" title="${deleteTitle}">
                             <i class="fas fa-times"></i>
                         </button>
                     `;
@@ -500,6 +563,17 @@
             }
 
             renderTodos() {
+                // Track which sublists are currently open before re-rendering
+                const openSublists = new Set();
+                document.querySelectorAll('.sublist-container').forEach(container => {
+                    if (container.style.display !== 'none' && container.id) {
+                        const todoId = container.id.replace('sublist-', '');
+                        if (todoId) {
+                            openSublists.add(todoId);
+                        }
+                    }
+                });
+
                 const importantTodos = this.todos
                     .filter(todo => todo.important && !todo.completed)
                     .sort((a, b) => (a.order || 0) - (b.order || 0));
@@ -516,9 +590,12 @@
                     importantSection.style.display = 'block';
                 }
 
-                // Show/hide All Tasks section based on whether there are any todos
+                // Count non-completed todos to determine if we should show empty state
+                const activeTodos = this.todos.filter(todo => !todo.completed);
+                
+                // Show/hide All Tasks section based on whether there are any active todos
                 const allTasksSection = document.querySelector('.todos-section:last-of-type');
-                if (this.todos.length === 0) {
+                if (activeTodos.length === 0) {
                     allTasksSection.style.display = 'none';
                 } else {
                     allTasksSection.style.display = 'block';
@@ -527,7 +604,35 @@
                 this.renderTodoList(importantTodos, this.importantTodos, true);
                 this.renderTodoList(regularTodos, this.allTodos, false);
 
-                this.emptyState.style.display = this.todos.length === 0 ? 'block' : 'none';
+                // Restore open sublists after re-rendering
+                openSublists.forEach(todoId => {
+                    const sublistContainer = document.getElementById(`sublist-${todoId}`);
+                    const sublistBtn = document.querySelector(`[onclick="app.toggleSublist('${todoId}')"]`);
+                    if (sublistContainer && sublistBtn) {
+                        sublistContainer.style.display = 'block';
+                        sublistBtn.classList.add('active');
+                        // Re-render subtasks if the todo still exists
+                        const todo = this.todos.find(t => t.id === todoId);
+                        if (todo && todo.subtasks) {
+                            this.renderSubtasks(todoId, todo.subtasks);
+                        }
+                    }
+                });
+
+                // Show/hide todos container and empty state based on active todos
+                if (activeTodos.length === 0) {
+                    // Hide todos container and show empty state
+                    if (this.todosContainer) {
+                        this.todosContainer.style.display = 'none';
+                    }
+                    this.emptyState.style.display = 'block';
+                } else {
+                    // Show todos container and hide empty state
+                    if (this.todosContainer) {
+                        this.todosContainer.style.display = 'flex';
+                    }
+                    this.emptyState.style.display = 'none';
+                }
             }
 
             renderTodoList(todos, container, isImportant) {
@@ -549,8 +654,10 @@
                 todoDiv.dataset.todoId = todo.id;
 
                 const subtasks = todo.subtasks || [];
-                const completedSubtasks = subtasks.filter(subtask => subtask.completed).length;
-                const hasSubtasks = subtasks.length > 0;
+                // Only count non-crossed-out subtasks
+                const activeSubtasks = subtasks.filter(subtask => !subtask.crossedOut);
+                const completedSubtasks = activeSubtasks.filter(subtask => subtask.completed).length;
+                const hasSubtasks = activeSubtasks.length > 0;
 
                 todoDiv.innerHTML = `
                     <div class="todo-content">
@@ -564,7 +671,7 @@
                                     onclick="app.toggleSublist('${todo.id}')" 
                                     title="${hasSubtasks ? 'View sublist' : 'Create sublist'}">
                                 <i class="fas fa-list"></i>
-                                ${hasSubtasks ? `<span class="sublist-count">${completedSubtasks}/${subtasks.length}</span>` : ''}
+                                ${hasSubtasks ? `<span class="sublist-count">${completedSubtasks}/${activeSubtasks.length}</span>` : ''}
                             </button>
                             <button class="important-btn ${todo.important ? 'important' : ''}" 
                                     onclick="app.toggleImportant('${todo.id}')" 
@@ -706,7 +813,8 @@
             }
 
             updateStats() {
-                const total = this.todos.length;
+                // Only count non-completed todos for the total
+                const total = this.todos.filter(todo => !todo.completed).length;
                 const important = this.todos.filter(todo => todo.important && !todo.completed).length;
                 const all = this.todos.filter(todo => !todo.completed).length;
 
@@ -723,6 +831,19 @@
                 const div = document.createElement('div');
                 div.textContent = text;
                 return div.innerHTML;
+            }
+
+            showAppError(message) {
+                this.appError.textContent = message;
+                this.appError.style.display = 'block';
+                // Auto-hide after 10 seconds
+                setTimeout(() => {
+                    this.appError.style.display = 'none';
+                }, 10000);
+            }
+
+            hideAppError() {
+                this.appError.style.display = 'none';
             }
         }
 
