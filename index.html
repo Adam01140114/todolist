@@ -56,7 +56,7 @@
 
         <div class="add-todo-section">
             <div class="input-container">
-                <input type="text" id="todoInput" placeholder="Add a new task..." maxlength="100">
+                <input type="text" id="todoInput" placeholder="Add a new task...">
                 <button id="addBtn" class="add-btn">
                     <i class="fas fa-plus"></i>
                 </button>
@@ -478,21 +478,49 @@
                     const subtaskElement = document.createElement('div');
                     const isCrossedOut = subtask.crossedOut || false;
                     subtaskElement.className = `subtask-item ${subtask.completed ? 'completed' : ''} ${isCrossedOut ? 'crossed-out' : ''}`;
+                    subtaskElement.dataset.subtaskId = subtask.id;
+                    subtaskElement.dataset.todoId = todoId;
                     
                     const deleteTitle = isCrossedOut ? 'Delete permanently' : 'Cross out';
                     
-                    subtaskElement.innerHTML = `
-                        <button class="subtask-complete-btn ${subtask.completed ? 'completed' : ''}" 
-                                onclick="app.toggleSubtask('${todoId}', '${subtask.id}')"
-                                ${isCrossedOut ? 'disabled style="opacity: 0.3; cursor: not-allowed;"' : ''}>
-                            <i class="fas fa-check"></i>
-                        </button>
-                        <span class="subtask-text">${this.escapeHtml(subtask.text)}</span>
-                        <button class="subtask-delete-btn" onclick="event.stopPropagation(); app.deleteSubtask('${todoId}', '${subtask.id}')" title="${deleteTitle}">
-                            <i class="fas fa-times"></i>
-                        </button>
-                    `;
-
+                    // Create complete button
+                    const completeBtn = document.createElement('button');
+                    completeBtn.className = `subtask-complete-btn ${subtask.completed ? 'completed' : ''}`;
+                    completeBtn.onclick = () => this.toggleSubtask(todoId, subtask.id);
+                    if (isCrossedOut) {
+                        completeBtn.disabled = true;
+                        completeBtn.style.opacity = '0.3';
+                        completeBtn.style.cursor = 'not-allowed';
+                    }
+                    completeBtn.innerHTML = '<i class="fas fa-check"></i>';
+                    
+                    // Create text element with double-click handler
+                    const textElement = document.createElement('span');
+                    textElement.className = 'subtask-text';
+                    textElement.textContent = subtask.text;
+                    textElement.title = 'Double-click to edit';
+                    if (!isCrossedOut) {
+                        textElement.addEventListener('dblclick', (e) => {
+                            e.stopPropagation();
+                            this.startEditSubtask(todoId, subtask.id);
+                        });
+                    }
+                    
+                    // Create delete button
+                    const deleteBtn = document.createElement('button');
+                    deleteBtn.className = 'subtask-delete-btn';
+                    deleteBtn.title = deleteTitle;
+                    deleteBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        this.deleteSubtask(todoId, subtask.id);
+                    };
+                    deleteBtn.innerHTML = '<i class="fas fa-times"></i>';
+                    
+                    // Assemble the element
+                    subtaskElement.appendChild(completeBtn);
+                    subtaskElement.appendChild(textElement);
+                    subtaskElement.appendChild(deleteBtn);
+                    
                     container.appendChild(subtaskElement);
                 });
             }
@@ -517,7 +545,6 @@
                 input.type = 'text';
                 input.value = currentText;
                 input.className = 'todo-edit-input';
-                input.maxLength = 100;
                 
                 // Replace text with input
                 textElement.style.display = 'none';
@@ -560,6 +587,91 @@
                 if (!this.todosRef) return;
                 const todoRef = ref(database, `users/${this.user.uid}/todos/${todoId}`);
                 await update(todoRef, { text: newText });
+            }
+
+            startEditSubtask(todoId, subtaskId) {
+                // Try to find the subtask element - use more specific selector
+                const container = document.getElementById(`sublistItems-${todoId}`);
+                if (!container) return;
+                
+                const subtaskElement = container.querySelector(`[data-subtask-id="${subtaskId}"]`);
+                if (!subtaskElement) {
+                    console.warn('Subtask element not found:', subtaskId);
+                    return;
+                }
+
+                const textElement = subtaskElement.querySelector('.subtask-text');
+                if (!textElement) {
+                    console.warn('Subtask text element not found');
+                    return;
+                }
+
+                // Don't allow editing crossed-out subtasks
+                if (subtaskElement.classList.contains('crossed-out')) return;
+
+                const currentText = textElement.textContent;
+                
+                // Create input element
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.value = currentText;
+                input.className = 'todo-edit-input';
+                
+                // Replace text with input
+                textElement.style.display = 'none';
+                textElement.parentNode.insertBefore(input, textElement);
+                
+                // Focus and select text
+                input.focus();
+                input.select();
+                
+                // Handle save on Enter or blur
+                const saveEdit = async () => {
+                    const newText = input.value.trim();
+                    if (newText && newText !== currentText) {
+                        await this.updateSubtaskText(todoId, subtaskId, newText);
+                    }
+                    // Restore text element
+                    textElement.textContent = newText || currentText;
+                    textElement.style.display = '';
+                    input.remove();
+                };
+                
+                const cancelEdit = () => {
+                    textElement.style.display = '';
+                    input.remove();
+                };
+                
+                input.addEventListener('blur', saveEdit);
+                input.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        saveEdit();
+                    } else if (e.key === 'Escape') {
+                        e.preventDefault();
+                        cancelEdit();
+                    }
+                });
+            }
+
+            async updateSubtaskText(todoId, subtaskId, newText) {
+                const todo = this.todos.find(t => t.id === todoId);
+                if (!todo || !this.todosRef) return;
+
+                const subtasks = todo.subtasks || [];
+                const subtask = subtasks.find(s => s.id === subtaskId);
+                if (!subtask) return;
+
+                subtask.text = newText;
+
+                // Update local state immediately
+                todo.subtasks = subtasks;
+
+                const todoRef = ref(database, `users/${this.user.uid}/todos/${todoId}`);
+                await update(todoRef, { subtasks: subtasks });
+                
+                // Re-render subtasks immediately
+                this.renderSubtasks(todoId, subtasks);
             }
 
             renderTodos() {
@@ -688,7 +800,7 @@
                             <h4>Steps to complete this task:</h4>
                         </div>
                         <div class="sublist-input">
-                            <input type="text" id="subtaskInput-${todo.id}" placeholder="Add a step..." maxlength="80">
+                            <input type="text" id="subtaskInput-${todo.id}" placeholder="Add a step...">
                             <button onclick="app.addSubtask('${todo.id}')" class="add-subtask-btn">
                                 <i class="fas fa-plus"></i>
                             </button>

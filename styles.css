@@ -552,6 +552,13 @@ body {
     color: #495057;
     word-wrap: break-word;
     transition: all 0.3s ease;
+    cursor: pointer;
+    padding: 2px 4px;
+    border-radius: 4px;
+}
+
+.subtask-text:hover {
+    background-color: #f8f9fa;
 }
 
 .subtask-item.completed .subtask-text {
